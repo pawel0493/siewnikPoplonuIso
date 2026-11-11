@@ -38,6 +38,38 @@ static void test_open_close_pulse() {
     assert(s.section_state == SectionState::Closed);
 }
 
+static void test_independent_pulse_config() {
+    SeederController c(500);
+    c.set_open_pulse_ms(700);
+    c.set_close_pulse_ms(300);
+    c.set_now_ms(1000);
+
+    c.request_section_open();
+    c.set_now_ms(1699);
+    auto s = c.snapshot();
+    assert(s.relay_open_pulse);
+    assert(!s.section_is_open);
+
+    c.set_now_ms(1700);
+    s = c.snapshot();
+    assert(!s.relay_open_pulse);
+    assert(s.section_is_open);
+
+    c.request_section_close();
+    c.set_now_ms(1999);
+    s = c.snapshot();
+    assert(s.relay_close_pulse);
+    assert(s.section_is_open);
+
+    c.set_now_ms(2000);
+    s = c.snapshot();
+    assert(!s.relay_close_pulse);
+    assert(!s.section_is_open);
+
+    assert(s.open_pulse_ms == 700);
+    assert(s.close_pulse_ms == 300);
+}
+
 static void test_auto_manual_relays() {
     SeederController c(500);
     c.set_now_ms(0);
@@ -79,10 +111,27 @@ static void test_md13s_setpoint_effective() {
     assert(s.md13s_effective_percent == 0);
 }
 
+static void test_md13s_pwm_limit() {
+    SeederController c(500);
+    c.set_motor_manual(true);
+    c.set_md13s_setpoint_percent(80);
+    c.set_md13s_pwm_limit_percent(50);
+    auto s = c.snapshot();
+    assert(s.md13s_pwm_limit_percent == 50);
+    assert(s.md13s_effective_percent == 40);
+
+    c.set_md13s_pwm_limit_percent(200);
+    s = c.snapshot();
+    assert(s.md13s_pwm_limit_percent == 100);
+    assert(s.md13s_effective_percent == 80);
+}
+
 int main() {
     test_open_close_pulse();
+    test_independent_pulse_config();
     test_auto_manual_relays();
     test_md13s_setpoint_effective();
+    test_md13s_pwm_limit();
     return 0;
 }
 

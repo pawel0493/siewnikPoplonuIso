@@ -2,7 +2,8 @@
 
 namespace siewnik {
 
-SeederController::SeederController(std::uint32_t pulse_ms) : pulse_duration_ms_(pulse_ms) {}
+SeederController::SeederController(std::uint32_t pulse_ms)
+    : open_pulse_duration_ms_(pulse_ms), close_pulse_duration_ms_(pulse_ms) {}
 
 int SeederController::clamp_percent(int value) {
     if (value < 0) {
@@ -28,12 +29,12 @@ void SeederController::set_now_ms(std::uint32_t now_ms) {
 
 void SeederController::request_section_open() {
     section_state_ = SectionState::OpeningPulse;
-    pulse_deadline_ms_ = now_ms_ + pulse_duration_ms_;
+    pulse_deadline_ms_ = now_ms_ + open_pulse_duration_ms_;
 }
 
 void SeederController::request_section_close() {
     section_state_ = SectionState::ClosingPulse;
-    pulse_deadline_ms_ = now_ms_ + pulse_duration_ms_;
+    pulse_deadline_ms_ = now_ms_ + close_pulse_duration_ms_;
 }
 
 void SeederController::set_motor_manual(bool enabled) { motor_manual_ = enabled; }
@@ -42,6 +43,13 @@ void SeederController::set_led_manual(bool enabled) { led_manual_ = enabled; }
 
 void SeederController::set_motor_auto_with_section(bool enabled) { motor_auto_with_section_ = enabled; }
 void SeederController::set_mixer_auto_with_section(bool enabled) { mixer_auto_with_section_ = enabled; }
+
+void SeederController::set_open_pulse_ms(std::uint32_t pulse_ms) { open_pulse_duration_ms_ = pulse_ms; }
+void SeederController::set_close_pulse_ms(std::uint32_t pulse_ms) { close_pulse_duration_ms_ = pulse_ms; }
+
+void SeederController::set_md13s_pwm_limit_percent(int percent_0_100) {
+    md13s_pwm_limit_percent_ = clamp_percent(percent_0_100);
+}
 
 void SeederController::set_md13s_setpoint_percent(int percent_0_100) {
     md13s_setpoint_percent_ = clamp_percent(percent_0_100);
@@ -58,13 +66,18 @@ SeederSnapshot SeederController::snapshot() const {
 
     out.motor_auto_with_section = motor_auto_with_section_;
     out.mixer_auto_with_section = mixer_auto_with_section_;
+    out.open_pulse_ms = open_pulse_duration_ms_;
+    out.close_pulse_ms = close_pulse_duration_ms_;
 
     out.relay_motor = motor_auto_with_section_ ? section_is_open_ : motor_manual_;
     out.relay_mixer = mixer_auto_with_section_ ? section_is_open_ : mixer_manual_;
     out.relay_led = led_manual_;
 
+    out.md13s_pwm_limit_percent = md13s_pwm_limit_percent_;
     out.md13s_setpoint_percent = md13s_setpoint_percent_;
-    out.md13s_effective_percent = out.relay_motor ? md13s_setpoint_percent_ : 0;
+    out.md13s_effective_percent = out.relay_motor
+                                      ? (md13s_setpoint_percent_ * md13s_pwm_limit_percent_) / 100
+                                      : 0;
 
     return out;
 }

@@ -25,6 +25,10 @@ struct SeederSnapshot {
     bool motor_auto_with_section = false;
     bool mixer_auto_with_section = false;
 
+    std::uint32_t open_pulse_ms = 500;
+    std::uint32_t close_pulse_ms = 500;
+
+    int md13s_pwm_limit_percent = 100;  // "siła PWM" z konfiguracji
     int md13s_setpoint_percent = 0;   // 0..100
     int md13s_effective_percent = 0;  // 0..100, 0 when motor relay is off
 };
@@ -45,6 +49,10 @@ public:
     void set_motor_auto_with_section(bool enabled);
     void set_mixer_auto_with_section(bool enabled);
 
+    void set_open_pulse_ms(std::uint32_t pulse_ms);
+    void set_close_pulse_ms(std::uint32_t pulse_ms);
+
+    void set_md13s_pwm_limit_percent(int percent_0_100);
     void set_md13s_setpoint_percent(int percent_0_100);
 
     SeederSnapshot snapshot() const;
@@ -52,7 +60,8 @@ public:
 private:
     static int clamp_percent(int value);
 
-    std::uint32_t pulse_duration_ms_;
+    std::uint32_t open_pulse_duration_ms_;
+    std::uint32_t close_pulse_duration_ms_;
     std::uint32_t now_ms_ = 0;
     std::uint32_t pulse_deadline_ms_ = 0;
 
@@ -66,6 +75,7 @@ private:
     bool motor_auto_with_section_ = false;
     bool mixer_auto_with_section_ = false;
 
+    int md13s_pwm_limit_percent_ = 100;
     int md13s_setpoint_percent_ = 0;
 };
 
