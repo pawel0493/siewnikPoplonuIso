@@ -1,3 +1,0 @@
-[submodule "firmware/components/AgIsoStack-plus-plus/upstream"]
-	path = firmware/components/AgIsoStack-plus-plus/upstream
-	url = https://github.com/pawel0493/AgIsoStack-plus-plus.git
