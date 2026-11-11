@@ -1,0 +1,385 @@
+# Virtual Terminal UI Design
+
+Concrete object pool design for the main and channel-name configuration VT
+screens: 8 relay-state indicators (4-per-row × 2 rows), three Soft Key Mask
+pages for relay control/settings, one configuration Data Mask, and 17
+matching AUX-N functions (a toggle + a momentary-override variant per relay
+channel, plus one momentary buzzer function). This refines
+the general VT/AUX-N notes in
+[isobus-protocol.md](isobus-protocol.md) into an actual layout. Channel-name
+configuration is implemented; icon picking and a general automation rule UI
+remain future work.
+
+Status: VT screen + SKM and AUX-N control are **implemented and
+bench-verified**; channel-name configuration is implemented, pending
+bench verification. End-to-end AUX-N assignment testing still needs real
+joystick hardware access. See [roadmap.md](roadmap.md) and
+[firmware/tools/gen_object_pool.py](../firmware/tools/gen_object_pool.py)
+for the actual generator. No bitmaps have been drawn yet — text labels are
+used in their place for now.
+
+## Object pool overview
+
+- **Working Set** object (root of our pool).
+- **Data Mask "Main"** — the primary mask:
+  - Title/identification text (device name).
+  - The relay indicator grid (below).
+  - Soft Key Mask assigned: **"Main SKM"** (below) — a second SKM page
+    exists too, reached at runtime via a next/back key pair, not through
+    the Data Mask's own static assignment (see
+    [Soft Key Masks](#soft-key-masks-two-pages-reached-via-a-nextback-key)
+    below).
+- A separate channel-name configuration mask is also included below. Icon
+  picking and general automation rules remain future work; see
+  [roadmap.md](roadmap.md).
+
+## Relay indicator grid (on the Data Mask)
+
+Eight identical widgets, 4 per row × 2 rows (R1–R4 top, R5–R8 bottom), one
+per relay channel. First pass used a single row of small 32×32 boxes with
+8×8 text and turned out to be barely readable on the bench — bumped up and
+reflowed into a grid. Each widget:
+
+- An **Output Rectangle**, 60×60, always outline-drawn (works even on a
+  monochrome VT where colour can't be relied on).
+  - **OFF:** unfilled / white.
+  - **ON:** solid fill (black, or the VT's "active/highlight" colour where
+    available) — state is shown by fill, not by hue, so it still reads
+    correctly on 2-colour and colour-blind-unfriendly displays.
+- An **Output String** with the configured channel name, directly under the
+  rectangle (not inside it: white-on-black would be fine, but a solid
+  black ON fill would swallow black text drawn on top of it, so it stays
+  below where it's readable in both states).
+- Optional (nice-to-have, not required for MVP): make the widget a
+  **Button** object so a touchscreen VT can also toggle it by tapping —
+  the real toggle path for non-touch VTs is the SKM/AUX-N below, so this
+  is an enhancement, not a dependency.
+
+## Digital input indicators & limit-switch interlock
+
+Phase 6's first automation rule (see
+[roadmap.md](roadmap.md#phase-6--automation-rules)): digital input DI{n}
+is a fixed, hardcoded limit-switch interlock for relay channel {n}. Two
+small additions to each channel's widget in the relay indicator grid make
+this visible and testable from the VT, without any new fonts, strings, or
+bitmap graphics:
+
+- A small (20×20) **Output Rectangle** under the configured channel label, unfilled =
+  DI inactive, filled = DI active — the same fill-by-state convention as
+  the main 60×60 relay indicator, just smaller and with no label of its
+  own (its position, directly below the matching channel, already says
+  what it is). Cheap: a rectangle + a dedicated `FillAttributes` object
+  per channel, ~336 bytes total for all 8 — deliberately avoided anything
+  graphics-based here, both for the effort and to keep the pool free of
+  bitmap data until icon picking is implemented.
+- The channel's own configured name gets a **`!` suffix** while its DI is
+  active (`"Start!"` instead of `"Start"`, via `send_change_string_value` — no
+  new objects needed, just a runtime value change on the string that's
+  already there), so it's obvious at a glance *why* a channel won't
+  respond, without having to notice the smaller DI box.
+
+While DI{n} is active: channel {n} is forced off immediately (if it was
+on) and refuses to be turned back on by any control path (SKM toggle,
+AUX-N toggle) except the momentary override path, which can bypass it if
+the operator has deliberately enabled that (see below) — enforced in one
+place, `vt_app.cpp`'s `apply_relay_state`, so every control path is
+protected without having to duplicate the check. When DI{n} goes inactive
+again, the channel stays off; the operator has to explicitly command it
+on again, matching this project's "safe defaults" requirement (N4) — a
+limit switch releasing shouldn't by itself resume motion.
+
+**Bench-confirmed real use case**: a hydraulic cylinder's end-stop switch
+wired to DI3, pulled to DGND when the cylinder reaches full travel (see
+[hardware.md](hardware.md#open-questions) for why DGND, not COM, is the
+"active" side of a DI channel). Reaching the end stop drives DI3 active,
+which the VT immediately shows as `"R3!"` with its DI box filled, and
+channel 3's output is force-disabled — stopping further movement in that
+direction without needing any external limit-switch relay or interposing
+logic, and without the operator having to notice anything except the "!"
+on the screen.
+
+## "Momentary Override Safety" checkbox
+
+A single, device-wide checkbox (unfilled/unchecked by default) on the
+Data Mask, below the relay grid, toggled by SK3 on SKM page 3 (terse "OR"
+label — see `gen_object_pool.py`'s comment for why, and why it lives on
+page 3 alongside the WiFi panel below rather than page 2's per-channel
+momentary keys; the full name is the label printed next to the checkbox
+itself).
+
+**Motivating example**: an auto-mode drives a hydraulic cylinder (e.g. a
+rear door) and normally stops it at a DI-triggered limit partway through
+its travel — not a hard end-stop, a deliberate soft limit for the normal
+case. Occasionally the operator needs to push past that limit on purpose
+(the door needs to open further than usual, just this once). With the
+checkbox **unchecked** (default): pressing the momentary AUX-N/SKM button
+past the limit does nothing, same as any other control path — the
+interlock wins. With it **checked**: that one momentary button is allowed
+to turn the channel back on despite the limit being active, for as long
+as it's held, so the operator can nudge the actuator further — while the
+plain toggle paths (SK1–SK8, the AUX-N latch variant) still always refuse
+regardless of this checkbox, so a stray/accidental toggle press can never
+be the thing that bypasses a safety limit; only a deliberate hold of the
+momentary control can.
+
+**Deliberately never persisted across a reboot** (`g_momentary_override_safety_enabled`
+in `vt_app.cpp` is a plain in-memory `bool`, not written to NVS): if this
+state survived a power cycle, the machine could start up with a safety
+limit silently bypassed with no operator action having happened that
+session — checking whether it's still checked isn't something an operator
+reliably remembers to do after every restart. Always boots (and every
+fresh VT connection re-syncs the checkbox visual to, via
+`resync_display()`) to unchecked/safe; enabling the override is a
+deliberate per-session choice. Relay outputs follow the same
+never-persisted, always-off-at-boot rule (`io::relay_driver::init()`, N4)
+for the same reason.
+
+## WiFi status & control panel
+
+Below the override checkbox, also on the shared Data Mask (visible
+regardless of which SKM page is active) — mirrors `net::wifi_ap.hpp`
+(Phase 7, [roadmap.md](roadmap.md#phase-7--wifi-ap--ota)):
+
+- A checkbox, same convention as the override checkbox above (unfilled =
+  off), labeled **"WiFi AP Enabled"**, toggled by SK2 on SKM page 3
+  (terse **"AP"** label). Checked by default (the AP comes up
+  unconditionally at boot); unchecking it tears down the SoftAP entirely
+  — no local web UI/OTA/relay-control reachability at all until it's
+  re-enabled from here, since there's no Ethernet fallback wired up yet.
+  Not persisted (see below).
+- **SSID** — read-only text, `"SSID: AgIsoBlock-XXXX"`.
+- **Password** — an Input String, not just a label: its rendered value
+  *is* the current password, and it's directly editable from the VT
+  (tap-to-edit on a touchscreen, or the VT's own field-navigation on a
+  button-only one) rather than needing a separate "edit" key. Confirming
+  a new value fires `VTChangeStringValueMessage`
+  (`get_vt_change_string_value_event_dispatcher()`), which
+  `net::wifi_ap::set_password()` applies immediately (reconfiguring the
+  running AP, dropping any already-connected clients including possibly
+  whoever just made the change) if it's at least 8 characters — WPA2-PSK's
+  actual protocol minimum, not a policy choice — or is rejected and the
+  field reverts to the still-current password otherwise. Deliberately no
+  default of the "same for every unit" kind (`12345678`, etc. — see
+  requirement N7): the device generates a random 12-character password on
+  first boot ([roadmap.md](roadmap.md#phase-7--wifi-ap--ota)) and this
+  panel is what turns "read it off a serial log once during setup" into
+  "read *or change* it from the cab any time," rather than trading that
+  security property away for convenience. Changes persist in the `wifi_ap`
+  NVS namespace through the queued internal-RAM NVS worker.
+- **IP** — read-only text, always `192.168.4.1` (ESP-IDF's fixed
+  AP-mode default).
+- **Clients** — read-only text, `"Clients: N"`, refreshed roughly every
+  2 seconds (`iso::vt_app::refresh_wifi_client_count()`) independently of
+  anything the operator does, since it can change on its own (a phone
+  joining/leaving the AP).
+
+## Soft Key Masks: three pages, chained via next/back keys
+
+Three Soft Key Mask objects are switched at runtime with the VT's "Change
+Soft Key Mask" command (`send_change_softkey_mask`) alongside the main Data
+Mask. The channel-name configuration uses a separate Data Mask and its own
+back-key mask (see below).
+
+**Page 1 "Main SKM" (10 keys) — the default on connect:**
+
+| Key | Action | Icon |
+|---|---|---|
+| SK1–SK8 | Toggle relay channel 1–8 | Configured channel name, underlined — same name + underline convention as the AUX-N toggle variant |
+| SK9 | Trigger buzzer (momentary pulse) | Text label **"BZ"** — Distinct buzzer/speaker pictogram once icon picking is implemented |
+| SK10 | Switch to page 2 | Text label **">>"** |
+
+**Page 2 "Momentary SKM" (10 keys):**
+
+| Key | Action | Icon |
+|---|---|---|
+| SK1–SK8 | Momentary-override relay channel 1–8 (see [AUX-N functions](#aux-n-functions-17-total) below for exactly what this does) | Configured channel name (max 7 characters), plain (no underline) — own key-sized label object (not the Data Mask label) |
+| SK9 | Switch back to page 1 | Text label **"<<"** |
+| SK10 | Switch to page 3 | Text label **">>"** — reuses page 1's own SK10 label object (identical meaning) |
+
+**Page 3 "WiFi/Settings SKM" (4 keys):**
+
+| Key | Action | Icon |
+|---|---|---|
+| SK1 | Open the channel-name configuration screen | Text label **"CFG"** |
+| SK2 | Toggle the WiFi panel's "AP Enabled" checkbox | Text label **"AP"** |
+| SK3 | Toggle the "Momentary Override Safety" checkbox | Text label **"OR"** |
+| SK9 | Switch back to page 2 | Text label **"<<"** — reuses page 2's own SK9 label object |
+
+The pool is designed for a **480 px wide Data Mask and 60 px soft keys**;
+`vt_app.cpp` calls `set_object_pool_scaling(0, 480, 60)` so AgIsoStack++
+rescales it to the connected VT. Data Mask channel labels use a 12×16 font
+(8 characters plus the interlock `!` suffix). Everything on a soft key or in
+an AUX-N assignment list is at most 56 px wide (label objects are 56 px
+inside a 60 px key): channel names use an 8×12 font and are shortened to
+**7 characters** there (the full 8-character name stays on the Data Mask and
+in the CFG view); captions such as "CFG", "AP", ">>" use a 16×24 font.
+Toggle labels remain underlined; momentary labels remain plain.
+
+**Reaching CFG:** it is SK1 on page 3 (press `>>` twice from page 1). A
+second entry point is a touch **CFG** Button on the main Data Mask (next to
+the override checkbox, effective on touch VTs) with the hint text
+`>> >> CFG`.
+
+## Channel-name configuration
+
+Press **CFG** (SK1 on page 3, or the CFG touch button on the main screen) to switch to the dedicated configuration Data
+Mask. It lists all eight channels as editable Input String fields, with a
+back key at SK9 returning to the main Data Mask. The VT's on-screen keyboard
+edits each channel directly; clearing a field restores its default `R{n}`
+name.
+
+Names are trimmed, restricted to printable ASCII, and limited to 8 characters
+so they remain compact on the Data Mask and soft keys. They are stored as
+`name1`–`name8` in the NVS `channels` namespace and survive reboot and firmware
+updates. The field and all channel labels use the same normalized value.
+Changing a name updates the Data Mask, both SK1–SK8 pages, and the toggle and
+momentary AUX-N designators at runtime. Toggle labels stay underlined, and a
+disabled channel's Data Mask label retains the `!` suffix. A VT that keeps an
+old AUX-N assignment-list designator may need its object pool refreshed or a
+reconnect; the firmware reapplies saved names after every pool upload/boot.
+The VT event handler queues each rename to a dedicated internal-RAM FreeRTOS
+worker; NVS writes do not run in the VT/CAN thread.
+
+The "Momentary Override Safety" checkbox is separate from channel
+configuration and is **never persisted**; it always remains false at boot.
+
+**Compatibility caveat:** not every VT renders 10 soft keys at once — many
+show 6 physical keys per mask, some 8, larger ones more. This needs
+resolving on the bench (see [Open questions](#open-questions)) for VTs
+other than the one this has actually been tested against — and now
+matters more than it did with two pages, since page 1 alone already
+assumes the full 10.
+
+## AUX-N functions (17 total)
+
+Each relay channel publishes **two** Auxiliary Function Type 2 objects, so
+the operator picks whichever behavior fits their equipment in the
+tractor's own native AUX-N assignment menu: a momentary override for
+temporarily inverting something, or toggle-and-stay for lights/pumps/fans.
+This is a deliberate choice, not an oversight: the hardware is generic
+relay contacts that could drive either kind of load, so offering both lets
+the assignment-time choice live where it belongs — with the person wiring
+up the equipment — at the cost of a longer list in the tractor's
+assignment menu.
+
+**The momentary variant is an override, not a direct setter.** An earlier
+version mirrored the input value straight to the relay (hold-to-run,
+relay on only while held) — but AUX-N input devices report their status
+periodically even while idle/released, not just on change, so with a
+toggle and a momentary variant both assigned to the same channel, the
+momentary variant's own idle "released" reports would repeatedly and
+silently stomp whatever the toggle variant had set. Bench-confirmed: "the
+momentary always turns it off." Fixed by making momentary an override
+instead of a competing setter: pressing it saves the relay's current
+state and **inverts** it; releasing restores whatever that saved state
+was. So a channel that's latched ON goes OFF while the momentary control
+is held and back ON on release — and symmetrically, a channel that's OFF
+goes ON while held and back OFF on release. Two controls for the same
+relay no longer fight over it, since the momentary one only ever acts
+relative to whatever the state already was, never setting an absolute
+value of its own.
+
+**Both variants are declared `BooleanNonLatchingIncreaseValue` (2) at the
+protocol level — neither uses `BooleanLatchingOnOff` (0).** Most tractors
+only expose momentary (spring-return) physical buttons on the
+joystick/armrest, and a tractor's own AUX-N assignment menu generally only
+offers inputs and functions of matching type — declaring a function as
+latching risks it not even showing up as assignable to a real momentary
+button (or behaving inconsistently across tractors that are lenient about
+the mismatch). So the "latching" *result* one of the two variants
+produces is implemented in our own firmware instead of relied on from the
+protocol: it toggles the relay on each rising edge of the (declared
+momentary) input and ignores the release, rather than mirroring the input
+value straight through.
+
+| # | Function | Type 2 `FunctionType` | Behavior | Label/Icon |
+|---|---|---|---|---|
+| 1–8 | Relay channel 1–8, toggle | `BooleanNonLatchingIncreaseValue` (2) | Firmware toggles the relay on each press (rising edge), ignores release — a momentary button acts like a latch | Configured channel name, **underlined** |
+| 9–16 | Relay channel 1–8, momentary override | `BooleanNonLatchingIncreaseValue` (2) | Firmware saves the relay's current state and inverts it on press; restores the saved state on release — see the note above | Configured channel name (max 7 characters), plain (no underline) — own key-sized label object (not the Data Mask label), and shared with the same-numbered key on SKM page 2 |
+| 17 | Buzzer | `BooleanNonLatchingIncreaseValue` (2) | Edge-triggered pulse on rising edge; matches SK9's pulse behavior | Own dedicated **"BZ"** label |
+
+See `handle_aux_function_event` in
+[vt_app.cpp](../firmware/main/isobus/vt_app.cpp) for the actual edge
+detection / override logic.
+
+All 17 are advertised unconditionally; whether any physical joystick/armrest
+button actually gets mapped to one is entirely up to the tractor's own
+native AUX-N assignment menu (see [isobus-protocol.md](isobus-protocol.md#auxiliary-control--aux-n-iso-11783-6-annex--iso-11783-7)).
+Our only job is to publish 17 distinctly-iconed, correctly-typed functions.
+
+Preferred assignments are persisted in the versioned `aux_pref` NVS blob,
+scoped by the VT server NAME, and re-advertised after reconnect or reboot.
+The persisted records use the stable AUX-N function object IDs (1501–1508,
+1521–1528, and 1560), so editing a channel's displayed label or re-uploading
+the object pool does not change its saved assignment. The AUX worker has a
+dedicated internal-RAM FreeRTOS stack. `POST /api/aux/clear` removes stored
+preferences for the currently connected VT; `GET /api/aux` lists them.
+See [firmware/README.md](../firmware/README.md#aux-n-preferred-assignment-persistence)
+for the remember-all mode, the logs, and the stable VT key.
+
+**Type 2, not Type 1:** AgIsoStack++'s own object-pool parser
+(`isobus_virtual_terminal_working_set_base.cpp`) logs that
+`AuxiliaryFunctionType1` objects are "parsed and validated but NOT
+utilized by version 3 or later VTs in making Auxiliary Control
+Assignments" — confirmed relevant here since the bench VT reports a
+version well into that range. `AuxiliaryFunctionType2` (ISO 11783-6:2018)
+is the one that actually works on modern terminals, so that's what's
+implemented, even though every example in the vendored library still only
+demonstrates the (deprecated-for-this-purpose) Type 1 path.
+
+## Icon design guidelines
+
+- **Format:** monochrome (1-bit) Picture Graphics for broadest VT
+  compatibility. A colour variant can be layered on top later for VTs that
+  support it, but must stay legible in black & white — colour is
+  decoration here, never the only signal (per the "black and white or
+  simple colours" brief).
+- **Sizes:** ISO 11783-6 defines soft-key icon sizes per VT size class.
+  The text-label pass that stands in for icons today reads at 32×32 (up
+  from an initial 8×8 that was found to be "way too small" on the bench)
+  and the Data Mask indicators are 60×60 — design the actual icon bitmaps
+  against those, with a 24×24 fallback for VTs too small to fit them, and
+  48×48 variants for larger/newer VTs if the pool format supports
+  multiple sizes.
+- **Relay icon:** one shared pictogram (simple toggle-switch/relay-coil
+  symbol) reused for channels 1–8, distinguished by an overlaid or
+  adjacent channel number ("1".."8") — R1..R8 read as *one set*,
+  distinguished by number, not by 8 unrelated pictograms.
+- **Buzzer icon:** a simple speaker/bell pictogram, visually distinct in
+  silhouette from the relay icon at a glance (different action type:
+  momentary signal vs. persistent switch), not just distinguished by a
+  missing number.
+- Actual bitmap artwork is a follow-up implementation task (Phase 3/4) —
+  this section is the spec an icon author/tool needs to satisfy, not the
+  pixels themselves.
+
+## Interaction / precedence rules
+
+- Three input paths can change a relay's state: Data Mask tap (if the
+  touch-toggle enhancement is built), SKM key press, and an AUX-N-mapped
+  joystick/armrest button. All three ultimately call the same
+  `relay_driver::set_relay(channel, state)` (see
+  [architecture.md](architecture.md)) — there's exactly one source of
+  truth for relay state, no separate "VT state" vs "AUX-N state".
+- Last action wins; no input path is more authoritative than another —
+  matches requirement F11 (manual control always able to reclaim an
+  automation-driven output).
+- SK9/buzzer AUX function is a **momentary pulse**, not a toggle: pressing
+  it fires a fixed-duration buzzer pulse; it never reports a "stuck on"
+  state back to the VT/AUX-N side.
+
+## Open questions
+
+- [ ] Confirm target VTs' actual soft key counts (6 vs 8 vs more) before
+      finalizing whether all 9 keys fit on one SKM or need a second page.
+- [ ] Confirm AgIsoStack++'s actual Auxiliary Function "type" enum names
+      for latching vs. momentary boolean functions (placeholder terms
+      "latching"/"non-latching" used above pending a look at the library API).
+- [ ] Decide whether Data Mask indicators are touch-toggleable Button
+      objects or read-only Output Rectangles (depends on target VT
+      hardware; read-only is the safe default, touch is an enhancement).
+- [ ] Produce actual Picture Graphic bitmaps (one shared relay pictogram +
+      one buzzer pictogram) once the guidelines above are agreed.
+- [ ] Decide object pool versioning/hash strategy so we can tell whether a
+      VT already has our current pool cached (see
+      [isobus-protocol.md](isobus-protocol.md)).
