@@ -16,8 +16,8 @@ Sterownik siewnika poplonu (1 sekcja) dla platformy Waveshare ESP32-S3-ETH-8DI-8
   - z opcją AUTO z sekcją, osobno dla R3 i R4.
 - **MD13S (Cytron)**:
   - sterowanie z VT,
-  - zakres prędkości: **0–100%**,
-  - osobna konfiguracja „siły PWM” (limit 0–100%),
+  - jedno ustawienie **PWM 0–100%** (bez osobnego setpoint/limitu),
+  - to ustawienie jest faktycznym sterowaniem Cytronem na pinie `GPIO48`,
   - jeden kierunek.
 
 ## Co jest już zaimplementowane
@@ -28,7 +28,7 @@ W repo jest gotowy, testowalny rdzeń logiki:
 - osobne czasy impulsu dla R1 (otwórz) i R2 (zamknij),
 - tryby MANUAL/AUTO dla R3 i R4,
 - ręczne R5,
-- setpoint MD13S + limit „siły PWM” + efektywna prędkość zależna od stanu R3,
+- jedno sterowanie PWM MD13S z VT + faktyczne wyjście PWM na GPIO48 (0 gdy R3=OFF),
 - pełny snapshot stanów przekaźników i statusu „sieje/zamknięte”.
 
 Kolejny krok to podpięcie tego rdzenia do warstwy ESP-IDF + ISOBUS VT.

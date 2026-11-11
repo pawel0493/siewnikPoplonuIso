@@ -94,44 +94,28 @@ static void test_auto_manual_relays() {
     assert(s.relay_mixer);
 }
 
-static void test_md13s_setpoint_effective() {
+static void test_md13s_pwm_output() {
     SeederController c(500);
-    c.set_md13s_setpoint_percent(140);
+    c.set_md13s_pwm_percent(140);
     auto s = c.snapshot();
-    assert(s.md13s_setpoint_percent == 100);
-    assert(s.md13s_effective_percent == 0);
+    assert(s.md13s_pwm_percent == 100);
+    assert(s.md13s_pin48_pwm_percent == 0);
 
     c.set_motor_manual(true);
     s = c.snapshot();
-    assert(s.md13s_effective_percent == 100);
+    assert(s.md13s_pin48_pwm_percent == 100);
 
-    c.set_md13s_setpoint_percent(-10);
+    c.set_md13s_pwm_percent(-10);
     s = c.snapshot();
-    assert(s.md13s_setpoint_percent == 0);
-    assert(s.md13s_effective_percent == 0);
-}
-
-static void test_md13s_pwm_limit() {
-    SeederController c(500);
-    c.set_motor_manual(true);
-    c.set_md13s_setpoint_percent(80);
-    c.set_md13s_pwm_limit_percent(50);
-    auto s = c.snapshot();
-    assert(s.md13s_pwm_limit_percent == 50);
-    assert(s.md13s_effective_percent == 40);
-
-    c.set_md13s_pwm_limit_percent(200);
-    s = c.snapshot();
-    assert(s.md13s_pwm_limit_percent == 100);
-    assert(s.md13s_effective_percent == 80);
+    assert(s.md13s_pwm_percent == 0);
+    assert(s.md13s_pin48_pwm_percent == 0);
 }
 
 int main() {
     test_open_close_pulse();
     test_independent_pulse_config();
     test_auto_manual_relays();
-    test_md13s_setpoint_effective();
-    test_md13s_pwm_limit();
+    test_md13s_pwm_output();
     return 0;
 }
 

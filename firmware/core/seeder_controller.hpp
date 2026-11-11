@@ -28,9 +28,8 @@ struct SeederSnapshot {
     std::uint32_t open_pulse_ms = 500;
     std::uint32_t close_pulse_ms = 500;
 
-    int md13s_pwm_limit_percent = 100;  // "siła PWM" z konfiguracji
-    int md13s_setpoint_percent = 0;   // 0..100
-    int md13s_effective_percent = 0;  // 0..100, 0 when motor relay is off
+    int md13s_pwm_percent = 0;         // 0..100 z VT
+    int md13s_pin48_pwm_percent = 0;   // faktyczne wyjście na pin 48
 };
 
 class SeederController {
@@ -52,8 +51,7 @@ public:
     void set_open_pulse_ms(std::uint32_t pulse_ms);
     void set_close_pulse_ms(std::uint32_t pulse_ms);
 
-    void set_md13s_pwm_limit_percent(int percent_0_100);
-    void set_md13s_setpoint_percent(int percent_0_100);
+    void set_md13s_pwm_percent(int percent_0_100);
 
     SeederSnapshot snapshot() const;
 
@@ -75,8 +73,7 @@ private:
     bool motor_auto_with_section_ = false;
     bool mixer_auto_with_section_ = false;
 
-    int md13s_pwm_limit_percent_ = 100;
-    int md13s_setpoint_percent_ = 0;
+    int md13s_pwm_percent_ = 0;
 };
 
 }  // namespace siewnik
