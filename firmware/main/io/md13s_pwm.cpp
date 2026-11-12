@@ -1,5 +1,7 @@
 #include "io/md13s_pwm.hpp"
 
+#include <cstdint>
+
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "esp_log.h"

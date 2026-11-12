@@ -63,6 +63,9 @@ bool set_relay(std::uint8_t channel, bool on) {
     const std::uint8_t bit = static_cast<std::uint8_t>(1u << (channel - 1));
     const std::uint8_t next = on ? static_cast<std::uint8_t>(g_output_state | bit)
                                  : static_cast<std::uint8_t>(g_output_state & ~bit);
+    if (next == g_output_state) {
+        return true;
+    }
     if (!write_reg(kRegOutputPort, next)) {
         return false;
     }

@@ -101,20 +101,20 @@ void SeederController::apply_aux_function(AuxFunction function) {
             request_section_close();
             break;
         case AuxFunction::SectionToggle:
-            if (section_is_open_) {
+            if (section_state_ == SectionState::Open || section_state_ == SectionState::OpeningPulse) {
                 request_section_close();
             } else {
                 request_section_open();
             }
             break;
         case AuxFunction::MotorToggleManual:
-            motor_manual_ = !motor_manual_;
+            toggle_motor_manual();
             break;
         case AuxFunction::MixerToggleManual:
-            mixer_manual_ = !mixer_manual_;
+            toggle_mixer_manual();
             break;
         case AuxFunction::LedToggleManual:
-            led_manual_ = !led_manual_;
+            toggle_led_manual();
             break;
     }
 }
@@ -122,10 +122,12 @@ void SeederController::apply_aux_function(AuxFunction function) {
 void SeederController::set_now_ms(std::uint32_t now_ms) {
     now_ms_ = now_ms;
 
-    if (section_state_ == SectionState::OpeningPulse && now_ms_ >= pulse_deadline_ms_) {
+    // Unsigned difference stays correct across the 2^32 ms wrap (about 49.7 days).
+    const bool pulse_done = (now_ms_ - pulse_start_ms_) >= pulse_duration_ms_;
+    if (section_state_ == SectionState::OpeningPulse && pulse_done) {
         section_state_ = SectionState::Open;
         section_is_open_ = true;
-    } else if (section_state_ == SectionState::ClosingPulse && now_ms_ >= pulse_deadline_ms_) {
+    } else if (section_state_ == SectionState::ClosingPulse && pulse_done) {
         section_state_ = SectionState::Closed;
         section_is_open_ = false;
     }
@@ -133,17 +135,23 @@ void SeederController::set_now_ms(std::uint32_t now_ms) {
 
 void SeederController::request_section_open() {
     section_state_ = SectionState::OpeningPulse;
-    pulse_deadline_ms_ = now_ms_ + open_pulse_duration_ms_;
+    pulse_start_ms_ = now_ms_;
+    pulse_duration_ms_ = open_pulse_duration_ms_;
 }
 
 void SeederController::request_section_close() {
     section_state_ = SectionState::ClosingPulse;
-    pulse_deadline_ms_ = now_ms_ + close_pulse_duration_ms_;
+    pulse_start_ms_ = now_ms_;
+    pulse_duration_ms_ = close_pulse_duration_ms_;
 }
 
 void SeederController::set_motor_manual(bool enabled) { motor_manual_ = enabled; }
 void SeederController::set_mixer_manual(bool enabled) { mixer_manual_ = enabled; }
 void SeederController::set_led_manual(bool enabled) { led_manual_ = enabled; }
+
+void SeederController::toggle_motor_manual() { motor_manual_ = !motor_manual_; }
+void SeederController::toggle_mixer_manual() { mixer_manual_ = !mixer_manual_; }
+void SeederController::toggle_led_manual() { led_manual_ = !led_manual_; }
 
 void SeederController::set_motor_auto_with_section(bool enabled) { motor_auto_with_section_ = enabled; }
 void SeederController::set_mixer_auto_with_section(bool enabled) { mixer_auto_with_section_ = enabled; }
@@ -179,6 +187,13 @@ void SeederController::handle_aux_button_event(std::uint8_t button, bool pressed
 
     if (pressed && !aux_last_pressed_[button]) {
         apply_aux_function(aux_assignments_[button]);
+    }
+    aux_last_pressed_[button] = pressed;
+}
+
+void SeederController::prime_aux_button_state(std::uint8_t button, bool pressed) {
+    if (!valid_button(button)) {
+        return;
     }
     aux_last_pressed_[button] = pressed;
 }

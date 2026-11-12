@@ -29,17 +29,7 @@ void apply_outputs(const siewnik::SeederSnapshot& s) {
     io::md13s_pwm::set_percent(s.md13s_pin48_pwm_percent);
 }
 
-void set_default_aux_mapping_if_empty(siewnik::SeederController& controller) {
-    bool has_any = false;
-    for (std::uint8_t button = 1; button <= siewnik::SeederController::kMaxAuxButtons; ++button) {
-        if (controller.get_aux_assignment(button) != siewnik::AuxFunction::None) {
-            has_any = true;
-            break;
-        }
-    }
-    if (has_any) {
-        return;
-    }
+void set_default_aux_mapping(siewnik::SeederController& controller) {
     controller.set_aux_assignment(1, siewnik::AuxFunction::SectionOpenPulse);
     controller.set_aux_assignment(2, siewnik::AuxFunction::SectionClosePulse);
     controller.set_aux_assignment(3, siewnik::AuxFunction::MotorToggleManual);
@@ -63,18 +53,29 @@ extern "C" void app_main(void) {
 
     siewnik::SeederController controller(500);
     std::string loaded;
+    bool restored = false;
     if (storage::state_store::load(loaded)) {
         if (controller.import_persistent_state(loaded)) {
             ESP_LOGI(kTag, "Restored controller state from NVS");
+            restored = true;
         } else {
             ESP_LOGW(kTag, "NVS state invalid, using defaults");
         }
     }
-    set_default_aux_mapping_if_empty(controller);
+    if (!restored) {
+        set_default_aux_mapping(controller);
+    }
 
+    // Let the debouncer settle on the real pin levels first, so a button held at power-up
+    // is treated as already pressed and does not fire its function.
+    for (int i = 0; i < io::input_driver::kDebounceSamples; ++i) {
+        io::input_driver::update();
+        vTaskDelay(kLoopDelay);
+    }
     std::array<bool, 8> last_di{};
     for (std::uint8_t ch = 1; ch <= 8; ++ch) {
         last_di[ch - 1] = io::input_driver::read_debounced(ch);
+        controller.prime_aux_button_state(ch, last_di[ch - 1]);
     }
 
     std::uint64_t last_log_ms = 0;
