@@ -41,3 +41,12 @@ do trwałego zapisu/odczytu po restarcie.
 
 Kolejny krok to podpięcie tego rdzenia do warstwy ESP-IDF + ISOBUS VT.
 
+## Status wdrożenia „na dziś” (bez TC)
+
+W repo jest już też firmware ESP-IDF do testu na płycie:
+
+- `firmware/main/app_main.cpp` spina rdzeń z przekaźnikami i PWM na `GPIO48`,
+- `firmware/main/storage/state_store.cpp` zapis/odczyt stanu z NVS,
+- `firmware/main/io/*` sterowniki I2C relay/DI/PWM,
+- tymczasowe sterowanie testowe przez wejścia DI (mapa w `firmware/README.md`).
+
