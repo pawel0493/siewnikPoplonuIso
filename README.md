@@ -19,6 +19,9 @@ Sterownik siewnika poplonu (1 sekcja) dla platformy Waveshare ESP32-S3-ETH-8DI-8
   - jedno ustawienie **PWM 0–100%** (bez osobnego setpoint/limitu),
   - to ustawienie jest faktycznym sterowaniem Cytronem na pinie `GPIO48`,
   - jeden kierunek.
+- **AUX-N**:
+  - przypisywanie przycisków do funkcji (otwórz/zamknij/toggle sekcji, toggle R3/R4/R5),
+  - konfiguracja eksportowana/importowana jako stan trwały (pod zapis do NVS po restarcie).
 
 ## Co jest już zaimplementowane
 
@@ -29,7 +32,12 @@ W repo jest gotowy, testowalny rdzeń logiki:
 - tryby MANUAL/AUTO dla R3 i R4,
 - ręczne R5,
 - jedno sterowanie PWM MD13S z VT + faktyczne wyjście PWM na GPIO48 (0 gdy R3=OFF),
+- rdzeń przypisań AUX + serializacja stanu do pamięci trwałej,
 - pełny snapshot stanów przekaźników i statusu „sieje/zamknięte”.
+
+Uwaga: warstwa ISOBUS (realny AUX-N z VT) i fizyczny zapis do NVS w ESP-IDF
+będą podpięte w kolejnym etapie; teraz gotowe jest API i format stanu
+do trwałego zapisu/odczytu po restarcie.
 
 Kolejny krok to podpięcie tego rdzenia do warstwy ESP-IDF + ISOBUS VT.
 

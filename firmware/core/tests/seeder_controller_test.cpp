@@ -1,8 +1,10 @@
 #include <cassert>
 #include <cstdint>
+#include <string>
 
 #include "seeder_controller.hpp"
 
+using siewnik::AuxFunction;
 using siewnik::SectionState;
 using siewnik::SeederController;
 
@@ -111,11 +113,75 @@ static void test_md13s_pwm_output() {
     assert(s.md13s_pin48_pwm_percent == 0);
 }
 
+static void test_aux_assignment_edge_trigger() {
+    SeederController c(500);
+    assert(c.set_aux_assignment(1, AuxFunction::SectionOpenPulse));
+    assert(c.set_aux_assignment(2, AuxFunction::SectionClosePulse));
+    assert(c.set_aux_assignment(3, AuxFunction::LedToggleManual));
+    assert(c.get_aux_assignment(1) == AuxFunction::SectionOpenPulse);
+    assert(!c.set_aux_assignment(0, AuxFunction::SectionToggle));
+
+    c.set_now_ms(1000);
+    c.handle_aux_button_event(1, true);
+    auto s = c.snapshot();
+    assert(s.relay_open_pulse);
+
+    c.handle_aux_button_event(1, true);
+    s = c.snapshot();
+    assert(s.relay_open_pulse);  // no duplicate trigger while held
+
+    c.handle_aux_button_event(1, false);
+    c.set_now_ms(1500);
+    s = c.snapshot();
+    assert(s.section_is_open);
+
+    c.handle_aux_button_event(3, true);
+    s = c.snapshot();
+    assert(s.relay_led);
+    c.handle_aux_button_event(3, false);
+    c.handle_aux_button_event(3, true);
+    s = c.snapshot();
+    assert(!s.relay_led);
+}
+
+static void test_persistent_state_roundtrip() {
+    SeederController a(500);
+    a.set_open_pulse_ms(620);
+    a.set_close_pulse_ms(410);
+    a.set_motor_auto_with_section(true);
+    a.set_mixer_auto_with_section(false);
+    a.set_motor_manual(true);
+    a.set_mixer_manual(true);
+    a.set_led_manual(true);
+    a.set_md13s_pwm_percent(73);
+    assert(a.set_aux_assignment(1, AuxFunction::SectionToggle));
+    assert(a.set_aux_assignment(4, AuxFunction::LedToggleManual));
+
+    const std::string persisted = a.export_persistent_state();
+
+    SeederController b(500);
+    assert(b.import_persistent_state(persisted));
+    auto s = b.snapshot();
+    assert(s.open_pulse_ms == 620);
+    assert(s.close_pulse_ms == 410);
+    assert(s.motor_auto_with_section);
+    assert(!s.mixer_auto_with_section);
+    assert(!s.relay_motor);
+    assert(s.relay_mixer);
+    assert(s.relay_led);
+    assert(s.md13s_pwm_percent == 73);
+    assert(b.get_aux_assignment(1) == AuxFunction::SectionToggle);
+    assert(b.get_aux_assignment(4) == AuxFunction::LedToggleManual);
+    assert(!b.import_persistent_state("invalid"));
+}
+
 int main() {
     test_open_close_pulse();
     test_independent_pulse_config();
     test_auto_manual_relays();
     test_md13s_pwm_output();
+    test_aux_assignment_edge_trigger();
+    test_persistent_state_roundtrip();
     return 0;
 }
 
