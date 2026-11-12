@@ -31,9 +31,11 @@ Wejścia DI są aktywne w stanie niskim (active-low), z debouncingiem.
 
 1. Wejdź do `firmware/`
 2. Skonfiguruj środowisko ESP-IDF
-3. Build:
+3. Ustaw target (jednorazowo per katalog build):
+   `idf.py set-target esp32s3`
+4. Build:
    `idf.py build`
-4. Flash + monitor:
+5. Flash + monitor:
    `idf.py -p <PORT> flash monitor`
 
 ## Co dalej
