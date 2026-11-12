@@ -30,13 +30,15 @@ Wejścia DI są aktywne w stanie niskim (active-low), z debouncingiem.
 
 ## Build / flash
 
-1. Wejdź do `firmware/`
-2. Skonfiguruj środowisko ESP-IDF
-3. Ustaw target (jednorazowo per katalog build):
+1. Jeśli repo było klonowane bez submodułów, dociągnij je:
+   `git submodule update --init --recursive`
+2. Wejdź do `firmware/`
+3. Skonfiguruj środowisko ESP-IDF
+4. Ustaw target (jednorazowo per katalog build):
    `idf.py set-target esp32s3`
-4. Build:
+5. Build:
    `idf.py build`
-5. Flash + monitor:
+6. Flash + monitor:
    `idf.py -p <PORT> flash monitor`
 
 ## Co dalej

@@ -2,6 +2,12 @@
 
 Sterownik siewnika poplonu (1 sekcja) dla platformy Waveshare ESP32-S3-ETH-8DI-8RO-C.
 
+## Klonowanie repo
+
+Repo używa submodułów (AgIsoStack++), więc klonuj z:
+
+`git clone --recurse-submodules https://github.com/pawel0493/siewnikPoplonuIso.git`
+
 ## Ustalona logika
 
 - **1 sekcja**
