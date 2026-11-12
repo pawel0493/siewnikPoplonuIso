@@ -9,6 +9,8 @@
 #include "io/input_driver.hpp"
 #include "io/md13s_pwm.hpp"
 #include "io/relay_driver.hpp"
+#include "isobus/ecu_identity.hpp"
+#include "isobus/vt_app.hpp"
 #include "nvs_flash.h"
 #include "seeder_controller.hpp"
 #include "storage/state_store.hpp"
@@ -76,14 +78,19 @@ extern "C" void app_main(void) {
     }
 
     std::uint64_t last_log_ms = 0;
+    std::uint64_t last_vt_publish_ms = 0;
     std::uint64_t dirty_since_ms = 0;
     std::string last_saved_state = controller.export_persistent_state();
     storage::state_store::save(last_saved_state);
+
+    auto internal_ecu = iso::ecu_identity::init();
+    iso::vt_app::init(internal_ecu);
 
     while (true) {
         const std::uint64_t now_ms = static_cast<std::uint64_t>(esp_timer_get_time() / 1000);
         controller.set_now_ms(static_cast<std::uint32_t>(now_ms));
         io::input_driver::update();
+        iso::vt_app::apply_pending_commands(controller);
 
         for (std::uint8_t ch = 1; ch <= 8; ++ch) {
             const bool current = io::input_driver::read_debounced(ch);
@@ -100,6 +107,10 @@ extern "C" void app_main(void) {
 
         const auto snap = controller.snapshot();
         apply_outputs(snap);
+        if ((now_ms - last_vt_publish_ms) >= 200) {
+            last_vt_publish_ms = now_ms;
+            iso::vt_app::publish_snapshot(snap);
+        }
 
         const std::string state_blob = controller.export_persistent_state();
         if (state_blob != last_saved_state) {
@@ -135,6 +146,9 @@ extern "C" void app_main(void) {
                 static_cast<int>(last_di[5]),
                 static_cast<int>(last_di[6]),
                 static_cast<int>(last_di[7]));
+            ESP_LOGI(kTag, "VT: partner=%s connected=%s",
+                     iso::vt_app::is_partner_claimed() ? "YES" : "NO",
+                     iso::vt_app::is_connected() ? "YES" : "NO");
         }
 
         vTaskDelay(kLoopDelay);

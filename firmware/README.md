@@ -13,6 +13,7 @@ Ta wersja jest przygotowana do testów polowych **dzisiaj** bez Task Controllera
   - `R5` LED,
 - wystawia faktyczny PWM MD13S na `GPIO48`,
 - zapisuje i odtwarza konfigurację po restarcie (NVS),
+- zgłasza ECU na ISOBUS CAN (`TWAI` 250 kbps) i uruchamia klienta VT,
 - obsługuje wejścia DI jako lokalne przyciski testowe.
 
 ## Mapowanie DI (tryb testowy)
@@ -41,5 +42,6 @@ Wejścia DI są aktywne w stanie niskim (active-low), z debouncingiem.
 ## Co dalej
 
 Następny etap to podpięcie ISOBUS VT + AUX-N na magistrali CAN do istniejącego
-rdzenia logiki (bez TC na razie).
+rdzenia logiki (bez TC na razie). Obecna pula VT jest bazowa (ekran typu relay block),
+ale urządzenie powinno już pojawić się na terminalu VT i pokazywać statusy.
 

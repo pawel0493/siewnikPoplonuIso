@@ -48,5 +48,6 @@ W repo jest już też firmware ESP-IDF do testu na płycie:
 - `firmware/main/app_main.cpp` spina rdzeń z przekaźnikami i PWM na `GPIO48`,
 - `firmware/main/storage/state_store.cpp` zapis/odczyt stanu z NVS,
 - `firmware/main/io/*` sterowniki I2C relay/DI/PWM,
+- `firmware/main/isobus/*` minimalny CAN + VT client (pokazanie ECU/ekranu na VT),
 - tymczasowe sterowanie testowe przez wejścia DI (mapa w `firmware/README.md`).
 
