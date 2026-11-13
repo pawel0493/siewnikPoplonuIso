@@ -16,12 +16,13 @@ FIRMWARE_DIR = pathlib.Path(__file__).resolve().parent.parent
 ISOBUS_DIR = FIRMWARE_DIR / "main" / "isobus"
 
 NULL_ID = 0xFFFF
-STATUS_LINE_LENGTH = 20  # VT strings keep their length, so updates are padded to this
+STATUS_LINE_LENGTH = 24  # VT strings keep their length, so updates are padded to this
 
 # Colour indices of the standard VT palette
 BLACK = 0
 WHITE = 1
 SILVER = 7
+BLUE = 9
 
 # VT object types
 WORKING_SET = 0
@@ -46,12 +47,13 @@ TITLE_ID = 40
 FONT_BIG_ID = 50
 FONT_MEDIUM_ID = 51
 FONT_SMALL_ID = 52
+FONT_TITLE_ID = 53
 
 # Status lines shown on the data mask: (C++ name, object ID, initial text)
 STATUS_LINES = [
     ("kTextSection", 41, "SEKCJA: ZAMKNIETA"),
-    ("kTextMotor", 42, "SILNIK: OFF"),
-    ("kTextMixer", 43, "MIESZADLO: OFF"),
+    ("kTextMotor", 42, "SILNIK: OFF  RECZNIE"),
+    ("kTextMixer", 43, "MIESZADLO: OFF  RECZNIE"),
     ("kTextLed", 44, "LED: OFF"),
     ("kTextPwm", 45, "PWM: 0%"),
 ]
@@ -137,9 +139,9 @@ def output_string(object_id, width, height, background, font_id, text):
             + u8(0))                                   # macro count
 
 
-def font_attributes(font_id, size):
+def font_attributes(font_id, size, colour):
     return (header(font_id, FONT_ATTRIBUTES)
-            + u8(BLACK) + u8(size)
+            + u8(colour) + u8(size)
             + u8(0)                                    # ISO 8859-1
             + u8(0) + u8(0))                           # style, macro count
 
@@ -156,19 +158,20 @@ def build_pool():
 
     objects = [
         working_set(),
-        data_mask([(TITLE_ID, 10, 8)] + [(line_id, 10, 72 + 38 * index)
+        data_mask([(TITLE_ID, 0, 0)] + [(line_id, 12, 56 + 36 * index)
                                          for index, (_, line_id, _) in enumerate(STATUS_LINES)]),
         soft_key_mask(key_ids),
     ]
     objects += [key(key_id, label_id) for key_id, label_id in zip(key_ids, label_ids)]
     objects += [output_string(label_id, 56, 12, SILVER, FONT_SMALL_ID, label)
                 for label_id, (_, label) in zip(label_ids, SOFT_KEYS)]
-    objects.append(output_string(TITLE_ID, 400, 32, WHITE, FONT_BIG_ID, "SIEWNIK S1"))
-    objects += [output_string(line_id, 400, 24, WHITE, FONT_MEDIUM_ID, text.ljust(STATUS_LINE_LENGTH))
+    objects.append(output_string(TITLE_ID, 420, 40, BLUE, FONT_TITLE_ID, " SIEWNIK S1"))
+    objects += [output_string(line_id, 408, 24, WHITE, FONT_MEDIUM_ID, text.ljust(STATUS_LINE_LENGTH))
                 for _, line_id, text in STATUS_LINES]
-    objects += [font_attributes(FONT_BIG_ID, FONT_24X32),
-                font_attributes(FONT_MEDIUM_ID, FONT_16X24),
-                font_attributes(FONT_SMALL_ID, FONT_8X12)]
+    objects += [font_attributes(FONT_BIG_ID, FONT_24X32, BLACK),
+                font_attributes(FONT_TITLE_ID, FONT_24X32, WHITE),
+                font_attributes(FONT_MEDIUM_ID, FONT_16X24, BLACK),
+                font_attributes(FONT_SMALL_ID, FONT_8X12, BLACK)]
     objects += [aux_function(object_id) for _, object_id in AUX_FUNCTIONS]
     return b"".join(objects)
 

@@ -24,7 +24,7 @@ namespace {
 constexpr const char* kTag = "vt_app";
 constexpr std::uint32_t kPoolDataMaskWidthPx = 480;
 constexpr std::uint32_t kPoolSoftKeyWidthPx = 60;
-constexpr std::size_t kStatusLineLength = 20;  // must match the pool generator
+constexpr std::size_t kStatusLineLength = 24;  // must match the pool generator
 constexpr std::size_t kStatusLineCount = 5;
 
 enum PendingCommand : std::uint32_t {
@@ -113,6 +113,11 @@ const char* section_text(siewnik::SectionState state) {
     }
     return "";
 }
+
+// Output state plus its mode: AUTO follows the section, RECZNIE is switched by hand.
+std::string output_text(const char* name, bool on, bool automatic) {
+    return std::string(name) + ": " + (on ? "ON " : "OFF") + "  " + (automatic ? "AUTO" : "RECZNIE");
+}
 }  // namespace
 
 void init(std::shared_ptr<isobus::InternalControlFunction> internal_ecu) {
@@ -175,8 +180,8 @@ void publish_snapshot(const siewnik::SeederSnapshot& snapshot) {
 
     const std::string lines[kStatusLineCount] = {
         status_text(std::string("SEKCJA: ") + section_text(snapshot.section_state)),
-        status_text(snapshot.relay_motor ? "SILNIK: ON" : "SILNIK: OFF"),
-        status_text(snapshot.relay_mixer ? "MIESZADLO: ON" : "MIESZADLO: OFF"),
+        status_text(output_text("SILNIK", snapshot.relay_motor, snapshot.motor_auto_with_section)),
+        status_text(output_text("MIESZADLO", snapshot.relay_mixer, snapshot.mixer_auto_with_section)),
         status_text(snapshot.relay_led ? "LED: ON" : "LED: OFF"),
         status_text("PWM: " + std::to_string(snapshot.md13s_pwm_percent) + "%"),
     };
