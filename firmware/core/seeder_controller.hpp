@@ -59,6 +59,10 @@ public:
     void set_mixer_manual(bool enabled);
     void set_led_manual(bool enabled);
 
+    void toggle_motor_manual();
+    void toggle_mixer_manual();
+    void toggle_led_manual();
+
     void set_motor_auto_with_section(bool enabled);
     void set_mixer_auto_with_section(bool enabled);
 
@@ -71,6 +75,7 @@ public:
     AuxFunction get_aux_assignment(std::uint8_t button) const;
     bool clear_aux_assignment(std::uint8_t button);
     void handle_aux_button_event(std::uint8_t button, bool pressed);
+    void prime_aux_button_state(std::uint8_t button, bool pressed);
 
     std::string export_persistent_state() const;
     bool import_persistent_state(const std::string& encoded);
@@ -90,7 +95,8 @@ private:
     std::uint32_t open_pulse_duration_ms_;
     std::uint32_t close_pulse_duration_ms_;
     std::uint32_t now_ms_ = 0;
-    std::uint32_t pulse_deadline_ms_ = 0;
+    std::uint32_t pulse_start_ms_ = 0;
+    std::uint32_t pulse_duration_ms_ = 0;
 
     SectionState section_state_ = SectionState::Closed;
     bool section_is_open_ = false;

@@ -1,3 +1,5 @@
+// Keep asserts active in every build type, including Release (NDEBUG).
+#undef NDEBUG
 #include <cassert>
 #include <cstdint>
 #include <string>
@@ -175,6 +177,76 @@ static void test_persistent_state_roundtrip() {
     assert(!b.import_persistent_state("invalid"));
 }
 
+static void test_section_toggle_during_pulse() {
+    SeederController c(500);
+    assert(c.set_aux_assignment(1, AuxFunction::SectionToggle));
+    c.set_now_ms(1000);
+
+    c.handle_aux_button_event(1, true);  // Closed -> OpeningPulse
+    c.handle_aux_button_event(1, false);
+    c.set_now_ms(1100);
+    c.handle_aux_button_event(1, true);  // second press during the pulse must close
+    auto s = c.snapshot();
+    assert(s.section_state == SectionState::ClosingPulse);
+    assert(s.relay_close_pulse);
+    assert(!s.relay_open_pulse);
+
+    c.handle_aux_button_event(1, false);
+    c.set_now_ms(1600);
+    s = c.snapshot();
+    assert(s.section_state == SectionState::Closed);
+}
+
+static void test_pulse_across_uint32_wrap() {
+    SeederController c(500);
+    c.set_now_ms(0xFFFFFFF0u);
+    c.request_section_open();
+
+    c.set_now_ms(0xFFFFFFF0u + 10u);  // still before the wrap; old deadline compare ended the pulse here
+    assert(c.snapshot().section_state == SectionState::OpeningPulse);
+
+    c.set_now_ms(0xFFFFFFF0u + 20u);  // counter has wrapped to 0x4
+    assert(c.snapshot().section_state == SectionState::OpeningPulse);
+
+    c.set_now_ms(0xFFFFFFF0u + 499u);
+    assert(c.snapshot().section_state == SectionState::OpeningPulse);
+
+    c.set_now_ms(0xFFFFFFF0u + 500u);
+    assert(c.snapshot().section_state == SectionState::Open);
+}
+
+static void test_button_held_at_startup_does_not_fire() {
+    SeederController c(500);
+    assert(c.set_aux_assignment(1, AuxFunction::SectionOpenPulse));
+    c.set_now_ms(0);
+    c.prime_aux_button_state(1, true);  // button already held when firmware starts
+    c.handle_aux_button_event(1, true);
+    assert(c.snapshot().section_state == SectionState::Closed);
+}
+
+static void test_cleared_aux_assignments_persist() {
+    SeederController a(500);
+    assert(a.set_aux_assignment(1, AuxFunction::SectionOpenPulse));
+    assert(a.clear_aux_assignment(1));
+
+    SeederController b(500);
+    assert(b.import_persistent_state(a.export_persistent_state()));
+    assert(b.get_aux_assignment(1) == AuxFunction::None);
+}
+
+static void test_manual_toggles_match_aux_and_vt() {
+    SeederController c(500);
+    c.set_motor_auto_with_section(true);
+    c.request_section_open();
+    c.set_now_ms(500);  // section open, motor auto follows it
+    c.toggle_motor_manual();
+    auto s = c.snapshot();
+    assert(s.relay_motor);  // auto still wins while section is open
+    c.set_motor_auto_with_section(false);
+    s = c.snapshot();
+    assert(s.relay_motor);  // manual flag was toggled, so the relay is on
+}
+
 int main() {
     test_open_close_pulse();
     test_independent_pulse_config();
@@ -182,6 +254,11 @@ int main() {
     test_md13s_pwm_output();
     test_aux_assignment_edge_trigger();
     test_persistent_state_roundtrip();
+    test_section_toggle_during_pulse();
+    test_pulse_across_uint32_wrap();
+    test_manual_toggles_match_aux_and_vt();
+    test_button_held_at_startup_does_not_fire();
+    test_cleared_aux_assignments_persist();
     return 0;
 }
 

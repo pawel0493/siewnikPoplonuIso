@@ -27,6 +27,17 @@ bool write_reg(std::uint8_t reg, std::uint8_t value) {
     }
     return true;
 }
+
+bool g_configured = false;
+
+// Writes outputs first, then switches all pins to outputs; retried from set_relay until it succeeds.
+bool configure() {
+    g_configured = write_reg(kRegOutputPort, g_output_state) && write_reg(kRegConfig, 0x00);
+    if (!g_configured) {
+        ESP_LOGE(kTag, "Relay expander not responding on 0x%02X", kAddr);
+    }
+    return g_configured;
+}
 }  // namespace
 
 bool init() {
@@ -48,12 +59,7 @@ bool init() {
     }
 
     g_output_state = 0x00;
-    bool ok = write_reg(kRegOutputPort, g_output_state);
-    ok = write_reg(kRegConfig, 0x00) && ok;
-    if (!ok) {
-        ESP_LOGE(kTag, "Relay expander not responding on 0x%02X", kAddr);
-    }
-    return ok;
+    return configure();
 }
 
 bool set_relay(std::uint8_t channel, bool on) {
@@ -63,6 +69,19 @@ bool set_relay(std::uint8_t channel, bool on) {
     const std::uint8_t bit = static_cast<std::uint8_t>(1u << (channel - 1));
     const std::uint8_t next = on ? static_cast<std::uint8_t>(g_output_state | bit)
                                  : static_cast<std::uint8_t>(g_output_state & ~bit);
+    if (!g_configured) {
+        static std::uint32_t last_retry_tick = 0;
+        const std::uint32_t now = xTaskGetTickCount();
+        if ((now - last_retry_tick) < pdMS_TO_TICKS(1000)) {
+            return false;
+        }
+        last_retry_tick = now;
+        g_output_state = next;
+        return configure();
+    }
+    if (next == g_output_state) {
+        return true;
+    }
     if (!write_reg(kRegOutputPort, next)) {
         return false;
     }

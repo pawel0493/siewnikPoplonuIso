@@ -6,6 +6,7 @@ idf_component_register(
         "io/input_driver.cpp"
         "io/md13s_pwm.cpp"
         "storage/state_store.cpp"
+        "storage/aux_assignment_store.cpp"
         "isobus/ecu_identity.cpp"
         "isobus/vt_app.cpp"
         "../core/seeder_controller.cpp"
