@@ -14,6 +14,7 @@
 #include "isobus/object_pool_ids.hpp"
 #include "isobus/utility/iop_file_interface.hpp"
 #include "seeder_controller.hpp"
+#include "storage/aux_assignment_store.hpp"
 
 extern "C" const std::uint8_t object_pool_iop_start[] asm("_binary_object_pool_iop_start");
 extern "C" const std::uint8_t object_pool_iop_end[] asm("_binary_object_pool_iop_end");
@@ -118,6 +119,26 @@ const char* section_text(siewnik::SectionState state) {
 std::string output_text(const char* name, bool on, bool automatic) {
     return std::string(name) + ": " + (on ? "ON " : "OFF") + "  " + (automatic ? "AUTO" : "RECZNIE");
 }
+
+// Called by the VT client to load AUX-N assignments saved for an input device (for example, a
+// joystick) the first time it is seen after a restart. Must match the library's callback signature.
+std::vector<isobus::VirtualTerminalClient::AssignedAuxiliaryFunction> load_aux_assignments(
+    std::uint64_t device_name, std::uint16_t model_id, void*) {
+    return storage::aux_assignment_store::load(device_name, model_id);
+}
+
+// Called by the VT client whenever an operator's AUX-N assignment is marked "preferred", so it
+// persists across restarts.
+void store_aux_assignments(std::uint64_t device_name, std::uint16_t model_id,
+                            const std::vector<isobus::VirtualTerminalClient::AssignedAuxiliaryFunction>& assignments,
+                            void*) {
+    storage::aux_assignment_store::save(device_name, model_id, assignments);
+}
+
+void handle_aux_assignment_failure(const isobus::VirtualTerminalClient::AuxiliaryAssignmentFailureEvent& event) {
+    ESP_LOGW(kTag, "AUX-N preferred assignment failed, reason flags: 0x%03X",
+             static_cast<unsigned>(event.reason));
+}
 }  // namespace
 
 void init(std::shared_ptr<isobus::InternalControlFunction> internal_ecu) {
@@ -140,6 +161,9 @@ void init(std::shared_ptr<isobus::InternalControlFunction> internal_ecu) {
     g_vt_client->set_object_pool_scaling(0, kPoolDataMaskWidthPx, kPoolSoftKeyWidthPx);
     g_vt_client->get_vt_soft_key_event_dispatcher().add_listener(handle_soft_key_event);
     g_vt_client->get_auxiliary_function_event_dispatcher().add_listener(handle_aux_function_event);
+    g_vt_client->get_auxiliary_assignment_failure_event_dispatcher().add_listener(handle_aux_assignment_failure);
+    g_vt_client->set_auxiliary_assignment_callbacks(load_aux_assignments, store_aux_assignments);
+    g_vt_client->set_auxiliary_functions_enabled(true);
     g_vt_client->initialize(true);
     ESP_LOGI(kTag, "VT client initialized");
 }

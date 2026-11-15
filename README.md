@@ -26,8 +26,8 @@ Repo używa submodułów (AgIsoStack++), więc klonuj z:
   - to ustawienie jest faktycznym sterowaniem Cytronem na pinie `GPIO48`,
   - jeden kierunek.
 - **AUX-N**:
-  - przypisywanie przycisków do funkcji (otwórz/zamknij/toggle sekcji, toggle R3/R4/R5),
-  - konfiguracja eksportowana/importowana jako stan trwały (pod zapis do NVS po restarcie).
+  - funkcje otwarcia/zamknięcia sekcji i przełączania R3/R4/R5 są dostępne do przypisania na VT,
+  - przypisania joysticka są zapisywane w NVS i wczytywane po restarcie.
 
 ## Co jest już zaimplementowane
 
@@ -41,11 +41,9 @@ W repo jest gotowy, testowalny rdzeń logiki:
 - rdzeń przypisań AUX + serializacja stanu do pamięci trwałej,
 - pełny snapshot stanów przekaźników i statusu „sieje/zamknięte”.
 
-Uwaga: warstwa ISOBUS (realny AUX-N z VT) i fizyczny zapis do NVS w ESP-IDF
-będą podpięte w kolejnym etapie; teraz gotowe jest API i format stanu
-do trwałego zapisu/odczytu po restarcie.
-
-Kolejny krok to podpięcie tego rdzenia do warstwy ESP-IDF + ISOBUS VT.
+Uwaga: obsługa AUX-N wymaga dalszej weryfikacji na sprzęcie.
+Ze względu na brak blokady zdarzeń w trybie nauki w używanej bibliotece,
+nie testuj joysticka z podłączonymi napędami ani na pracującej maszynie.
 
 ## Status wdrożenia „na dziś” (bez TC)
 

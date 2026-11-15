@@ -43,6 +43,7 @@ FUNCTION_BOOLEAN_MOMENTARY = 2
 WORKING_SET_ID = 0
 DATA_MASK_ID = 1
 SOFT_KEY_MASK_ID = 2
+WORKING_SET_LABEL_ID = 39
 TITLE_ID = 40
 FONT_BIG_ID = 50
 FONT_MEDIUM_ID = 51
@@ -73,6 +74,7 @@ SOFT_KEYS = [
 ]
 
 # Joystick (AUX-N) functions: (C++ name, object ID). The VT assigns joystick buttons to them.
+# The first five soft key labels also describe the corresponding AUX functions.
 AUX_FUNCTIONS = [
     ("kAuxOpen", 2001),
     ("kAuxClose", 2002),
@@ -103,7 +105,7 @@ def working_set():
     return (header(WORKING_SET_ID, WORKING_SET)
             + u8(WHITE) + u8(1) + u16(DATA_MASK_ID)   # background, selectable, active mask
             + u8(1) + u8(0) + u8(1)                    # child, macro and language counts
-            + child_refs([(DATA_MASK_ID, 0, 0)])
+            + child_refs([(WORKING_SET_LABEL_ID, 0, 0)])
             + b"pl")
 
 
@@ -121,9 +123,9 @@ def soft_key_mask(key_ids):
             + b"".join(u16(key_id) for key_id in key_ids))
 
 
-def key(key_id, label_id):
+def key(key_id, label_id, key_code):
     return (header(key_id, KEY)
-            + u8(SILVER) + u8(0)                       # background, key code
+            + u8(SILVER) + u8(key_code)                # background, key code
             + u8(1) + u8(0)                            # child and macro counts
             + child_refs([(label_id, 2, 9)]))
 
@@ -146,10 +148,10 @@ def font_attributes(font_id, size, colour):
             + u8(0) + u8(0))                           # style, macro count
 
 
-def aux_function(object_id):
+def aux_function(object_id, label_id):
     return (header(object_id, AUX_FUNCTION_TYPE2)
             + u8(WHITE) + u8(FUNCTION_BOOLEAN_MOMENTARY)
-            + u8(0))                                   # no assigned inputs yet
+            + u8(1) + child_refs([(label_id, 0, 0)]))
 
 
 def build_pool():
@@ -162,9 +164,11 @@ def build_pool():
                                          for index, (_, line_id, _) in enumerate(STATUS_LINES)]),
         soft_key_mask(key_ids),
     ]
-    objects += [key(key_id, label_id) for key_id, label_id in zip(key_ids, label_ids)]
+    objects += [key(key_id, label_id, index + 1)
+                for index, (key_id, label_id) in enumerate(zip(key_ids, label_ids))]
     objects += [output_string(label_id, 56, 12, SILVER, FONT_SMALL_ID, label)
                 for label_id, (_, label) in zip(label_ids, SOFT_KEYS)]
+    objects.append(output_string(WORKING_SET_LABEL_ID, 56, 12, WHITE, FONT_SMALL_ID, "SIEWNIK"))
     objects.append(output_string(TITLE_ID, 420, 40, BLUE, FONT_TITLE_ID, " SIEWNIK S1"))
     objects += [output_string(line_id, 408, 24, WHITE, FONT_MEDIUM_ID, text.ljust(STATUS_LINE_LENGTH))
                 for _, line_id, text in STATUS_LINES]
@@ -172,7 +176,8 @@ def build_pool():
                 font_attributes(FONT_TITLE_ID, FONT_24X32, WHITE),
                 font_attributes(FONT_MEDIUM_ID, FONT_16X24, BLACK),
                 font_attributes(FONT_SMALL_ID, FONT_8X12, BLACK)]
-    objects += [aux_function(object_id) for _, object_id in AUX_FUNCTIONS]
+    objects += [aux_function(object_id, label_ids[index])
+                for index, (_, object_id) in enumerate(AUX_FUNCTIONS)]
     return b"".join(objects)
 
 
@@ -204,7 +209,7 @@ def object_length(pool, pos):
 
 def check_pool(pool):
     """Walks the pool object by object and checks sizes and references. Returns the object count."""
-    object_ids = set()
+    object_types = {}
     references = []
     pos = 0
     count = 0
@@ -212,10 +217,13 @@ def check_pool(pool):
         object_id = struct.unpack_from("<H", pool, pos)[0]
         object_type = pool[pos + 2]
         length = object_length(pool, pos)
-        object_ids.add(object_id)
+        if object_id in object_types:
+            raise ValueError(f"duplicate object ID: {object_id}")
+        object_types[object_id] = object_type
         count += 1
 
         if object_type in (WORKING_SET, DATA_MASK):
+            references.append(struct.unpack_from("<H", pool, pos + (5 if object_type == WORKING_SET else 4))[0])
             children = pool[pos + 7] if object_type == WORKING_SET else pool[pos + 6]
             start = pos + (10 if object_type == WORKING_SET else 8)
             references += [struct.unpack_from("<H", pool, start + 6 * index)[0] for index in range(children)]
@@ -223,12 +231,19 @@ def check_pool(pool):
             references.append(struct.unpack_from("<H", pool, pos + 7)[0])
         elif object_type == SOFT_KEY_MASK:
             references += [struct.unpack_from("<H", pool, pos + 6 + 2 * index)[0] for index in range(pool[pos + 4])]
+        elif object_type == AUX_FUNCTION_TYPE2:
+            references += [struct.unpack_from("<H", pool, pos + 6 + 6 * index)[0] for index in range(pool[pos + 5])]
+        elif object_type == OUTPUT_STRING:
+            references.append(struct.unpack_from("<H", pool, pos + 8)[0])
+            variable_id = struct.unpack_from("<H", pool, pos + 11)[0]
+            if variable_id != NULL_ID:
+                references.append(variable_id)
 
         pos += length
 
     if pos != len(pool):
         raise ValueError(f"pool parsed to {pos} bytes, but it has {len(pool)}")
-    missing = sorted(set(references) - object_ids)
+    missing = sorted(set(references) - set(object_types))
     if missing:
         raise ValueError(f"references to missing objects: {missing}")
     return count
